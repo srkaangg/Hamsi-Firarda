@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hamsi Firarda: Derin Mavi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;700;900&display=swap');
+        
+        :root {
+            --primary: #06b6d4;
+            --accent: #f59e0b;
+            --bg-deep-blue: #001f3f; /* Derin Mavi Arka Plan */
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-deep-blue);
+            color: #fff;
+            user-select: none;
+            touch-action: none;
+        }
+
+        .bungee { font-family: 'Bungee', cursive; }
+
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #001f3f, #003366);
+        }
+
+        .ui-panel {
+            background: rgba(0, 31, 63, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .market-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.1s ease;
+        }
+        .market-card:active { transform: scale(0.96); }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4);
+        }
+
+        .scroll-custom::-webkit-scrollbar { width: 0px; }
+    </style>
+</head>
+<body>
+
+<!-- OYUN HUD -->
+<div id="hud" class="fixed top-0 left-0 w-full p-4 flex justify-between items-start pointer-events-none z-40 opacity-0 transition-opacity duration-500">
+    <div class="flex flex-col gap-1">
+        <div class="bg-black/40 backdrop-blur-md px-5 py-2 rounded-2xl border border-white/10">
+            <span id="score-val" class="text-2xl bungee text-cyan-400">0m</span>
+        </div>
+        <div class="bg-yellow-500/20 backdrop-blur-md px-3 py-1 rounded-xl border border-yellow-500/50 flex items-center gap-2 w-fit">
+            <span class="text-yellow-400 font-bold text-sm">💰 <span id="gold-val">0</span></span>
+        </div>
+    </div>
+    <div id="active-perks-bar" class="flex gap-2"></div>
+</div>
+
+<div id="overlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    
+    <!-- ANA MENÜ -->
+    <div id="menu-main" class="text-center space-y-8 p-6 w-full max-w-sm">
+        <h1 class="text-6xl bungee text-white drop-shadow-2xl italic leading-none uppercase tracking-tighter">Hamsi<br><span class="text-cyan-400">Firarda</span></h1>
+        <div class="flex flex-col gap-4">
+            <button onclick="game.start()" class="bg-cyan-600 hover:bg-cyan-500 text-white bungee text-3xl py-6 rounded-3xl shadow-[0_8px_0_#086d8d] active:translate-y-1 active:shadow-none transition-all">BAŞLA!</button>
+            <button onclick="ui.openMarket()" class="bg-white/10 text-white font-black py-4 rounded-2xl border border-white/10 backdrop-blur-md">🛒 GRAND MARKET</button>
+        </div>
+        <div class="bg-blue-900/40 p-3 rounded-xl inline-block border border-blue-500/20">
+            <p class="text-cyan-300 text-xs font-bold uppercase tracking-widest">REKOR: <span id="highscore-val" class="text-white">0</span>m</p>
+        </div>
+    </div>
+
+    <!-- MARKET -->
+    <div id="menu-market" class="ui-panel w-full h-full md:w-[550px] md:h-[85vh] md:rounded-[40px] flex flex-col hidden overflow-hidden">
+        <div class="p-6 border-b border-white/10 flex items-center justify-between bg-black/20">
+            <div>
+                <h2 class="text-2xl bungee">MARKET</h2>
+                <p class="text-yellow-500 font-black text-sm">Altın: <span class="global-gold text-white">0</span> 💰</p>
+            </div>
+            <button onclick="ui.closeMarket()" class="bg-red-500/20 text-red-500 px-4 py-2 rounded-xl font-bold">KAPAT</button>
+        </div>
+
+        <div class="flex p-2 gap-1 bg-white/5 m-4 rounded-2xl border border-white/5">
+            <button onclick="ui.setMarketTab('fishes')" id="tab-fishes" class="tab-btn flex-1 py-3 rounded-xl font-bold text-[10px] active">BALIKLAR (30)</button>
+            <button onclick="ui.setMarketTab('lab')" id="tab-lab" class="tab-btn flex-1 py-3 rounded-xl font-bold text-[10px]">YETENEK (40)</button>
+            <button onclick="ui.setMarketTab('maps')" id="tab-maps" class="tab-btn flex-1 py-3 rounded-xl font-bold text-[10px]">BÖLGE (20)</button>
+        </div>
+
+        <div id="market-content" class="flex-1 overflow-y-auto scroll-custom p-4 space-y-3"></div>
+    </div>
+
+    <!-- ÖLÜM EKRANI -->
+    <div id="menu-death" class="ui-panel w-[90%] max-w-sm rounded-[40px] p-8 text-center hidden">
+        <div class="text-6xl mb-4">🍢</div>
+        <h2 class="text-4xl bungee text-red-500 mb-2">IZGARA OLDUN!</h2>
+        
+        <div class="bg-white/5 p-6 rounded-3xl mb-6 border border-white/10">
+            <p class="text-xs font-bold text-slate-400 uppercase">MESAFE</p>
+            <p id="death-score" class="text-5xl bungee text-white">0m</p>
+            <div class="mt-4 pt-4 border-t border-white/5 flex justify-center items-center gap-2 text-yellow-500 font-black">
+                💰 +<span id="death-gold">0</span> KAZANÇ
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+            <button onclick="game.start()" class="w-full bg-cyan-600 py-5 rounded-2xl bungee text-xl shadow-[0_5px_0_#086d8d]">YENİDEN DENE</button>
+            <button onclick="ui.backToMain()" class="w-full py-3 text-slate-400 font-bold">ANA MENÜ</button>
+        </div>
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * DİNAMİK VERİ ÜRETİMİ (30 Balık, 40 Yetenek, 20 Bölge)
+ */
+const fishNames = ["Temel Hamsi", "Çılgın İstavrit", "Gümüş Sardalya", "Usta Palamut", "Mavi Lüfer", "Kıvrak Zargana", "Kalkan Paşa", "Kral Mersin", "Dev Orkinos", "Derya Kuzusu", "Laz Balığı", "Sürmene Güzeli", "Çayeli Rüzgarı", "Trabzon Ateşi", "Rize Kartalı", "Hopa Canavarı", "Artvin Boğası", "Giresun Fındığı", "Ordu Balı", "Samsun Güneşi", "Sinop Mantısı", "Kastamonu Ayısı", "Zonguldak Kömürü", "Bartın İncisi", "Akçakoca Dalgası", "Kilyos Fırtınası", "Şile Mehtabı", "Adalar Prensi", "Ege Efesi", "Akdeniz Kralı"];
+const fishIcons = ["🐟","🐠","🐡","🦈","🐋","🐳","🐬","🦀","🦞","🦐","🦑","🐙","🦪","🐠","🐟","🐡","🦈","🐋","🐳","🐬","🦀","🦞","🦐","🦑","🐙","🦪","🐠","🐟","🐡","🦈"];
+const FISHES = Array.from({length: 30}, (_, i) => ({
+    id: `f${i}`, name: fishNames[i], icon: fishIcons[i], price: i * 2000, mult: 1 + (i * 0.2)
+}));
+
+const perkNames = ["Vira Bismillah", "Mıhlama Kalkanı", "Horon Hızı", "Çay Molası", "Laz Damarı", "Fındık Gücü", "Hamsi Bombası", "Gölge Yüzgeç", "Altın Mıknatıs", "Süper Sıçrayış", "Sisli Hava", "Buz Gibi Su", "Dalga Kıran", "Mercan Koruması", "İnci Parlaması", "Köpük Patlaması", "Derin Nefes", "Yakamoz", "Fırtına Gözü", "Yunus Yardımı", "Poseidon İzmi", "Akvaryum Kaçağı", "Oksijen Tüpü", "Hızlı Kuyruk", "Sert Pul", "Kemik Yapı", "Deniz Yıldızı", "Kumlu Kamufle", "Yosun Sarma", "Akıntı Takibi", "Girdap Etkisi", "Tuzlu Zırh", "Mavi Işık", "Sonar Dalga", "Eko Lokasyon", "Yüzgeç Darbesi", "Keskin Göz", "Sabır Taşı", "Şanslı Olta", "Efsanevi Kaçış"];
+const perkIcons = ["🚀","🛡️","⚡","☕","💪","🥜","💣","👤","🧲","⬆️","🌫️","❄️","🌊","🪸","✨","🫧","🫁","🌙","👁️","🐬","🔱","🚪","🧪","💨","🧱","🦴","⭐","🏖️","🌿","➡️","🌀","🛡️","💡","📡","🔊","💥","👁️","💎","🎣","👑"];
+const PERKS = Array.from({length: 40}, (_, i) => ({
+    id: `p${i}`, name: perkNames[i], icon: perkIcons[i], price: 1000 + (i * 800), duration: 3000 + (i * 100), cooldown: 12000
+}));
+
+const mapNames = ["Sürmene", "Uzungöl", "Fırtına Deresi", "Ayder Yaylası", "Sümela", "Boztepe", "Valla Kanyonu", "İnceburun", "Amastris", "Zonguldak Mağarası", "Akçakoca", "Kandırı Sahili", "Şile Feneri", "Kız Kulesi", "Adalar Kapısı", "Çanakkale Boğazı", "Assos Koyu", "Ayvalık Adaları", "İzmir Körfezi", "Bodrum Kalesi"];
+const mapIcons = ["🌊","🌫️","⚡","🏔️","🏰","🌅","🏞️","🏟️","🏛️","⛏️","🏖️","🐚","🏮","🗼","🛶","⚓","🗿","🏝️","⛵","🏯"];
+const MAPS = Array.from({length: 20}, (_, i) => ({
+    id: `m${i}`, name: mapNames[i], icon: mapIcons[i], price: i * 4000, diff: 1 + (i * 0.25), color: `hsl(${(i * 18 + 200) % 360}, 60%, 15%)`
+}));
+
+let state = {
+    gold: 5000,
+    highScore: 0,
+    currentFish: 'f0',
+    currentMap: 'm0',
+    ownedFishes: ['f0'],
+    ownedMaps: ['m0'],
+    ownedPerks: [],
+    selectedPerks: [],
+    perkSlots: 3
+};
+
+const game = {
+    canvas: null, ctx: null, player: null, obstacles: [], 
+    lastTime: 0, score: 0, isPlaying: false, activePowers: {},
+
+    init() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.load();
+        ui.init();
+        this.draw();
+    },
+
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+    },
+
+    start() {
+        this.player = new Player();
+        this.obstacles = [];
+        this.activePowers = {};
+        state.selectedPerks.forEach(id => { this.activePowers[id] = { status: 'ready' }; });
+        this.score = 0;
+        this.lastTime = performance.now();
+        this.isPlaying = true;
+        ui.hideOverlay();
+        document.getElementById('hud').style.opacity = '1';
+        ui.renderHUDPerks();
+        this.loop();
+    },
+
+    stop() {
+        if(!this.isPlaying) return;
+        this.isPlaying = false;
+        const fish = FISHES.find(f => f.id === state.currentFish);
+        const earned = Math.floor((this.score * 0.5) * (fish ? fish.mult : 1));
+        state.gold += earned;
+        if(this.score > state.highScore) state.highScore = Math.floor(this.score);
+        document.getElementById('death-score').innerText = Math.floor(this.score) + 'm';
+        document.getElementById('death-gold').innerText = earned;
+        ui.showOverlay('menu-death');
+        this.save();
+    },
+
+    loop() {
+        if(!this.isPlaying) return;
+        const now = performance.now();
+        const dt = Math.min((now - this.lastTime) / 16, 2);
+        this.lastTime = now;
+        this.update(dt);
+        this.draw();
+        ui.updateCooldowns();
+        requestAnimationFrame(() => this.loop());
+    },
+
+    update(dt) {
+        this.player.update(dt);
+        this.score += 0.1 * dt;
+        document.getElementById('score-val').innerText = Math.floor(this.score) + 'm';
+        document.getElementById('gold-val').innerText = state.gold.toLocaleString();
+
+        const map = MAPS.find(m => m.id === state.currentMap) || MAPS[0];
+        const spawnDist = 480 / map.diff; 
+        
+        if(this.obstacles.length === 0 || this.canvas.width - this.obstacles[this.obstacles.length-1].x > spawnDist) {
+            this.obstacles.push(new Obstacle(this.canvas.width));
+        }
+
+        for(let i = this.obstacles.length - 1; i >= 0; i--) {
+            const obs = this.obstacles[i];
+            obs.x -= (5.5 + map.diff) * dt;
+            if(this.player.collidesWith(obs)) this.stop();
+            if(obs.x < -200) this.obstacles.splice(i, 1);
+        }
+    },
+
+    draw() {
+        const map = MAPS.find(m => m.id === state.currentMap) || MAPS[0];
+        this.ctx.fillStyle = map.color;
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        this.ctx.fillStyle = "rgba(255,255,255,0.03)";
+        for(let i=0; i<15; i++) {
+            this.ctx.beginPath();
+            this.ctx.arc((Date.now() / 30 + i*150) % this.canvas.width, (i * 97) % this.canvas.height, 4, 0, Math.PI*2);
+            this.ctx.fill();
+        }
+
+        this.obstacles.forEach(o => o.draw(this.ctx));
+        if(this.player) this.player.draw(this.ctx);
+    },
+
+    usePerk(id) {
+        if(!this.isPlaying) return;
+        const power = this.activePowers[id];
+        const perk = PERKS.find(p => p.id === id);
+        if(power && power.status === 'ready') {
+            power.status = 'active';
+            power.startTime = Date.now();
+            setTimeout(() => {
+                power.status = 'cooldown';
+                power.cooldownStart = Date.now();
+                setTimeout(() => power.status = 'ready', perk.cooldown);
+            }, perk.duration);
+        }
+    },
+
+    save() { localStorage.setItem('hamsi_v10_blue', JSON.stringify(state)); },
+    load() {
+        const saved = localStorage.getItem('hamsi_v10_blue');
+        if(saved) state = { ...state, ...JSON.parse(saved) };
+    }
+};
+
+class Player {
+    constructor() {
+        this.x = 100;
+        this.y = window.innerHeight / 2;
+        this.vy = 0;
+        this.rotation = 0;
+        this.size = window.innerWidth < 600 ? 55 : 75; 
+    }
+    update(dt) {
+        this.vy += 0.42 * dt;
+        this.y += this.vy * dt;
+        const targetRot = Math.max(-0.6, Math.min(0.6, this.vy * 0.08));
+        this.rotation += (targetRot - this.rotation) * 0.1;
+        if(this.y < 0 || this.y > window.innerHeight) game.stop();
+    }
+    draw(ctx) {
+        const fish = FISHES.find(f => f.id === state.currentFish) || FISHES[0];
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.rotation);
+        ctx.scale(-1, 1); 
+        ctx.font = `${this.size}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(fish.icon, 0, 0);
+        ctx.restore();
+    }
+    collidesWith(obs) {
+        const hitX = this.size * 0.35; 
+        const hitY = this.size * 0.22;
+        if(this.x + hitX > obs.x && this.x - hitX < obs.x + obs.w) {
+            if(this.y - hitY < obs.top || this.y + hitY > obs.top + obs.gap) return true;
+        }
+        return false;
+    }
+}
+
+class Obstacle {
+    constructor(x) {
+        this.x = x; 
+        this.w = 90; 
+        this.gap = window.innerWidth < 600 ? 230 : 270; 
+        this.top = Math.random() * (window.innerHeight - this.gap - 250) + 120;
+    }
+    draw(ctx) {
+        ctx.fillStyle = "rgba(0, 50, 100, 0.8)";
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.2)";
+        ctx.lineWidth = 3;
+        
+        ctx.beginPath();
+        ctx.roundRect(this.x, -50, this.w, this.top + 50, 15);
+        ctx.fill(); ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.roundRect(this.x, this.top + this.gap, this.w, window.innerHeight - (this.top + this.gap) + 50, 15);
+        ctx.fill(); ctx.stroke();
+    }
+}
+
+const ui = {
+    currentTab: 'fishes',
+    init() {
+        this.refreshGlobalUI();
+        window.addEventListener('keydown', (e) => {
+            if(e.code === 'Space') {
+                if(game.isPlaying) game.player.vy = -8.2;
+                else if(!document.getElementById('menu-main').classList.contains('hidden')) game.start();
+            }
+        });
+        window.addEventListener('touchstart', (e) => {
+            if(game.isPlaying) {
+                game.player.vy = -8.2;
+                e.preventDefault();
+            }
+        }, { passive: false });
+        this.renderMarketContent();
+    },
+
+    openMarket() { this.showOverlay('menu-market'); this.renderMarketContent(); },
+    closeMarket() { this.showOverlay('menu-main'); },
+    backToMain() { this.showOverlay('menu-main'); },
+    
+    showOverlay(id) {
+        document.querySelectorAll('#overlay > div').forEach(d => d.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+        document.getElementById('overlay').classList.remove('hidden');
+        document.getElementById('hud').style.opacity = '0';
+        this.refreshGlobalUI();
+    },
+    hideOverlay() { document.getElementById('overlay').classList.add('hidden'); },
+
+    setMarketTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-' + tab).classList.add('active');
+        this.currentTab = tab;
+        this.renderMarketContent();
+    },
+
+    renderMarketContent() {
+        const container = document.getElementById('market-content');
+        container.innerHTML = '';
+
+        if(this.currentTab === 'fishes') {
+            FISHES.forEach(f => {
+                const owned = state.ownedFishes.includes(f.id);
+                const active = state.currentFish === f.id;
+                container.innerHTML += `
+                    <div class="market-card p-4 rounded-3xl flex items-center gap-4 ${active ? 'border-cyan-500 bg-cyan-500/10' : ''}">
+                        <div class="text-4xl w-12 text-center">${f.icon}</div>
+                        <div class="flex-1">
+                            <h3 class="font-black text-xs uppercase">${f.name}</h3>
+                            <p class="text-[9px] text-cyan-500">Çarpan: x${f.mult.toFixed(1)}</p>
+                        </div>
+                        <button onclick="ui.buyFish('${f.id}', ${f.price})" class="px-4 py-2 rounded-xl font-black text-[10px] ${active ? 'bg-cyan-500' : (owned ? 'bg-emerald-600' : 'bg-white text-black')}">
+                            ${active ? 'AKTİF' : (owned ? 'SEÇ' : f.price + ' 💰')}
+                        </button>
+                    </div>`;
+            });
+        } else if(this.currentTab === 'lab') {
+            PERKS.forEach(p => {
+                const owned = state.ownedPerks.includes(p.id);
+                const selected = state.selectedPerks.includes(p.id);
+                container.innerHTML += `
+                    <div class="market-card p-4 rounded-3xl flex items-center gap-4 ${selected ? 'border-yellow-500 bg-yellow-500/10' : ''}">
+                        <div class="text-3xl w-12 text-center">${p.icon}</div>
+                        <div class="flex-1">
+                            <h3 class="font-black text-xs uppercase">${p.name}</h3>
+                            <p class="text-[9px] text-slate-400">Süre: ${(p.duration/1000).toFixed(1)}sn</p>
+                        </div>
+                        <button onclick="ui.handlePerk('${p.id}', ${p.price})" class="px-4 py-2 rounded-xl font-black text-[10px] ${selected ? 'bg-red-500' : (owned ? 'bg-emerald-600' : 'bg-cyan-500')}">
+                            ${selected ? 'BIRAK' : (owned ? 'KUŞAN' : p.price + ' 💰')}
+                        </button>
+                    </div>`;
+            });
+        } else if(this.currentTab === 'maps') {
+            MAPS.forEach(m => {
+                const owned = state.ownedMaps.includes(m.id);
+                const active = state.currentMap === m.id;
+                container.innerHTML += `
+                    <div class="market-card p-4 rounded-3xl flex items-center gap-4 ${active ? 'border-emerald-500 bg-emerald-500/10' : ''}">
+                        <div class="text-3xl w-12 text-center">${m.icon}</div>
+                        <div class="flex-1">
+                            <h3 class="font-black text-xs uppercase">${m.name}</h3>
+                            <p class="text-[9px] text-slate-400">Zorluk: x${m.diff.toFixed(1)}</p>
+                        </div>
+                        <button onclick="ui.buyMap('${m.id}', ${m.price})" class="px-4 py-2 rounded-xl font-black text-[10px] ${active ? 'bg-emerald-500' : (owned ? 'bg-white text-black' : 'bg-blue-600')}">
+                            ${active ? 'BURADASIN' : (owned ? 'GİT' : m.price + ' 💰')}
+                        </button>
+                    </div>`;
+            });
+        }
+    },
+
+    buyFish(id, price) {
+        if(state.ownedFishes.includes(id)) state.currentFish = id;
+        else if(state.gold >= price) { state.gold -= price; state.ownedFishes.push(id); state.currentFish = id; }
+        game.save(); this.renderMarketContent(); this.refreshGlobalUI();
+    },
+
+    handlePerk(id, price) {
+        if(state.selectedPerks.includes(id)) state.selectedPerks = state.selectedPerks.filter(p => p !== id);
+        else if(state.ownedPerks.includes(id)) { if(state.selectedPerks.length < state.perkSlots) state.selectedPerks.push(id); }
+        else if(state.gold >= price) { state.gold -= price; state.ownedPerks.push(id); }
+        game.save(); this.renderMarketContent(); this.refreshGlobalUI();
+    },
+
+    buyMap(id, price) {
+        if(state.ownedMaps.includes(id)) state.currentMap = id;
+        else if(state.gold >= price) { state.gold -= price; state.ownedMaps.push(id); state.currentMap = id; }
+        game.save(); this.renderMarketContent(); this.refreshGlobalUI();
+    },
+
+    refreshGlobalUI() {
+        document.querySelectorAll('.global-gold').forEach(el => el.innerText = state.gold.toLocaleString());
+        document.getElementById('highscore-val').innerText = state.highScore;
+        document.getElementById('gold-val').innerText = state.gold.toLocaleString();
+    },
+
+    renderHUDPerks() {
+        const bar = document.getElementById('active-perks-bar');
+        bar.innerHTML = '';
+        state.selectedPerks.forEach((id) => {
+            const p = PERKS.find(perk => perk.id === id);
+            bar.innerHTML += `
+                <div onclick="game.usePerk('${id}')" class="w-12 h-12 bg-black/40 rounded-xl border border-white/20 flex items-center justify-center relative overflow-hidden pointer-events-auto active:scale-90 transition-transform">
+                    <span class="text-xl">${p.icon}</span>
+                    <div id="cooldown-overlay-${id}" class="absolute bottom-0 left-0 w-full bg-red-500/50 h-0"></div>
+                </div>`;
+        });
+    },
+
+    updateCooldowns() {
+        state.selectedPerks.forEach(id => {
+            const power = game.activePowers[id];
+            const p = PERKS.find(perk => perk.id === id);
+            const overlay = document.getElementById(`cooldown-overlay-${id}`);
+            if(!overlay || !power) return;
+            if(power.status === 'active') overlay.style.height = (100 - ((Date.now() - power.startTime) / p.duration * 100)) + '%';
+            else if(power.status === 'cooldown') overlay.style.height = (100 - ((Date.now() - power.cooldownStart) / p.cooldown * 100)) + '%';
+            else overlay.style.height = '0%';
+        });
+    }
+};
+
+game.init();
+</script>
+</body>
+</html>
