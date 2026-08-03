@@ -125,6 +125,46 @@
 
 <script>
 /**
+ * SES SİMÜLATÖRÜ (Web Audio API - Harici dosyasız ses efekti motoru)
+ */
+const Sound = {
+    ctx: null,
+    init() {
+        if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    },
+    jump() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.1);
+    },
+    hit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(180, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.35);
+        gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.35);
+    }
+};
+
+/**
  * DİNAMİK VERİ ÜRETİMİ (30 Balık, 40 Yetenek, 20 Bölge)
  */
 const fishNames = ["Temel Hamsi", "Çılgın İstavrit", "Gümüş Sardalya", "Usta Palamut", "Mavi Lüfer", "Kıvrak Zargana", "Kalkan Paşa", "Kral Mersin", "Dev Orkinos", "Derya Kuzusu", "Laz Balığı", "Sürmene Güzeli", "Çayeli Rüzgarı", "Trabzon Ateşi", "Rize Kartalı", "Hopa Canavarı", "Artvin Boğası", "Giresun Fındığı", "Ordu Balı", "Samsun Güneşi", "Sinop Mantısı", "Kastamonu Ayısı", "Zonguldak Kömürü", "Bartın İncisi", "Akçakoca Dalgası", "Kilyos Fırtınası", "Şile Mehtabı", "Adalar Prensi", "Ege Efesi", "Akdeniz Kralı"];
@@ -160,6 +200,7 @@ let state = {
 const game = {
     canvas: null, ctx: null, player: null, obstacles: [], 
     lastTime: 0, score: 0, isPlaying: false, activePowers: {},
+    nextSpawnDist: 400,
 
     init() {
         this.canvas = document.getElementById('gameCanvas');
@@ -177,6 +218,7 @@ const game = {
     },
 
     start() {
+        Sound.init();
         this.player = new Player();
         this.obstacles = [];
         this.activePowers = {};
@@ -184,6 +226,7 @@ const game = {
         this.score = 0;
         this.lastTime = performance.now();
         this.isPlaying = true;
+        this.nextSpawnDist = 350;
         ui.hideOverlay();
         document.getElementById('hud').style.opacity = '1';
         ui.renderHUDPerks();
@@ -193,6 +236,7 @@ const game = {
     stop() {
         if(!this.isPlaying) return;
         this.isPlaying = false;
+        Sound.hit();
         const fish = FISHES.find(f => f.id === state.currentFish);
         const earned = Math.floor((this.score * 0.5) * (fish ? fish.mult : 1));
         state.gold += earned;
@@ -201,6 +245,21 @@ const game = {
         document.getElementById('death-gold').innerText = earned;
         ui.showOverlay('menu-death');
         this.save();
+
+        // ==========================================
+        // KENDİ BACKEND API'N İÇİN SKOR GÖNDERME
+        // ==========================================
+        /*
+        fetch('https://senin-api-adresin.com/api/scores', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                score: Math.floor(this.score),
+                gold: state.gold,
+                fish: state.currentFish
+            })
+        }).then(res => res.json()).then(data => console.log('Skor kaydedildi:', data));
+        */
     },
 
     loop() {
@@ -221,10 +280,13 @@ const game = {
         document.getElementById('gold-val').innerText = state.gold.toLocaleString();
 
         const map = MAPS.find(m => m.id === state.currentMap) || MAPS[0];
-        const spawnDist = 480 / map.diff; 
         
-        if(this.obstacles.length === 0 || this.canvas.width - this.obstacles[this.obstacles.length-1].x > spawnDist) {
+        // EŞİT DİZİLİMİ ÖNLEYEN RASTGELE MESAFE MANTIĞI
+        if(this.obstacles.length === 0 || this.canvas.width - this.obstacles[this.obstacles.length-1].x > this.nextSpawnDist) {
             this.obstacles.push(new Obstacle(this.canvas.width));
+            // Bir sonraki engelin geliş mesafesini rastgele belirle
+            const baseDist = (window.innerWidth < 600 ? 320 : 420) / map.diff;
+            this.nextSpawnDist = baseDist + (Math.random() * 180 - 90); 
         }
 
         for(let i = this.obstacles.length - 1; i >= 0; i--) {
@@ -266,10 +328,35 @@ const game = {
         }
     },
 
-    save() { localStorage.setItem('hamsi_v10_blue', JSON.stringify(state)); },
+    save() { 
+        localStorage.setItem('hamsi_v10_blue', JSON.stringify(state)); 
+        
+        // ==========================================
+        // KENDİ BACKEND API'N İÇİN OYUNCU VERİSİ KAYDETME
+        // ==========================================
+        /*
+        fetch('https://senin-api-adresin.com/api/save-state', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(state)
+        });
+        */
+    },
+    
     load() {
         const saved = localStorage.getItem('hamsi_v10_blue');
         if(saved) state = { ...state, ...JSON.parse(saved) };
+
+        // ==========================================
+        // KENDİ BACKEND API'N İÇİN OYUNCU VERİSİ ÇEKME
+        // ==========================================
+        /*
+        fetch('https://senin-api-adresin.com/api/get-state')
+            .then(res => res.json())
+            .then(data => {
+                if(data) { state = { ...state, ...data }; ui.refreshGlobalUI(); }
+            });
+        */
     }
 };
 
@@ -280,6 +367,10 @@ class Player {
         this.vy = 0;
         this.rotation = 0;
         this.size = window.innerWidth < 600 ? 55 : 75; 
+    }
+    jump() {
+        this.vy = -8.2;
+        Sound.jump();
     }
     update(dt) {
         this.vy += 0.42 * dt;
@@ -313,19 +404,28 @@ class Player {
 class Obstacle {
     constructor(x) {
         this.x = x; 
-        this.w = 90; 
-        this.gap = window.innerWidth < 600 ? 230 : 270; 
-        this.top = Math.random() * (window.innerHeight - this.gap - 250) + 120;
+        this.w = window.innerWidth < 600 ? 75 : 90; 
+        
+        // BOŞLUK BOYUTUNDA VE KONUMUNDA RASTGELELİK (Düzensiz Engel Yapısı)
+        const gapVariation = Math.random() * 60 - 30; // ±30px rastgele boşluk genişliği
+        this.gap = (window.innerWidth < 600 ? 230 : 270) + gapVariation; 
+        
+        // Üst engelin yüksekliği ekranın %15'i ile %60'ı arasında rastgele değişir
+        const minTop = window.innerHeight * 0.12;
+        const maxTop = window.innerHeight - this.gap - (window.innerHeight * 0.15);
+        this.top = Math.random() * (maxTop - minTop) + minTop;
     }
     draw(ctx) {
         ctx.fillStyle = "rgba(0, 50, 100, 0.8)";
         ctx.strokeStyle = "rgba(0, 255, 255, 0.2)";
         ctx.lineWidth = 3;
         
+        // Üst Kolon
         ctx.beginPath();
         ctx.roundRect(this.x, -50, this.w, this.top + 50, 15);
         ctx.fill(); ctx.stroke();
         
+        // Alt Kolon
         ctx.beginPath();
         ctx.roundRect(this.x, this.top + this.gap, this.w, window.innerHeight - (this.top + this.gap) + 50, 15);
         ctx.fill(); ctx.stroke();
@@ -336,18 +436,23 @@ const ui = {
     currentTab: 'fishes',
     init() {
         this.refreshGlobalUI();
+        
+        // Klavyeden Zıplama
         window.addEventListener('keydown', (e) => {
             if(e.code === 'Space') {
-                if(game.isPlaying) game.player.vy = -8.2;
+                if(game.isPlaying) game.player.jump();
                 else if(!document.getElementById('menu-main').classList.contains('hidden')) game.start();
             }
         });
+
+        // Mobilde Dokunarak Zıplama
         window.addEventListener('touchstart', (e) => {
             if(game.isPlaying) {
-                game.player.vy = -8.2;
+                game.player.jump();
                 e.preventDefault();
             }
         }, { passive: false });
+
         this.renderMarketContent();
     },
 
